@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <string.h>
 
 #include <mmu.h>
 
@@ -17,7 +18,7 @@ extern char *base;
 extern int framesbegin;
 extern int idproc;
 extern int systemframetablesize;
-extern int ptlr;
+extern int ptlr;//tamaño de tabla de paginas
 
 extern struct SYSTEMFRAMETABLE *systemframetable;
 extern struct PROCESSPAGETABLE *ptbr;
@@ -27,6 +28,9 @@ int getfreeframe();
 int searchvirtualframe();
 int getfifo();
 
+//funciones mias
+int getPageToFree();
+
 int pagefault(char *vaddress)
 {
     int i;
@@ -35,18 +39,26 @@ int pagefault(char *vaddress)
     int fd;
     char buffer[PAGESIZE];
     int pag_del_proceso;
+    //nuestras
+    char emptyBuffer[PAGESIZE];
+    char auxBuffer[PAGESIZE];
+    
+    strcpy(emptyBuffer,"FFFFFFFF");
 
     // A partir de la dirección que provocó el fallo, calculamos la página
     pag_del_proceso=(long) vaddress>>12;
 
 
     // Si la página del proceso está en un marco virtual del disco
-    {
+    
+    if(ptbr[pag_del_proceso].framenumber>12){
 
 		// Lee el marco virtual al buffer
-
+        readblock(buffer,ptbr[pag_del_proceso].framenumber); //checar como enviar buffer.
         // Libera el frame virtual
+        writeblock(emptyBuffer,ptbr[pag_del_proceso].framenumber);//limpia pAddress asi que CHECAR 
     }
+    
 
 
     // Cuenta los marcos asignados al proceso
@@ -56,36 +68,107 @@ int pagefault(char *vaddress)
     if(i>=RESIDENTSETSIZE)
     {
 		// Buscar una página a expulsar
-		
+		int free = getPageToFree();
 		// Poner el bitde presente en 0 en la tabla de páginas
-        
+        ptbr[free].presente = 0;
         // Si la página ya fue modificada, grábala en disco
-        {
+        
+        if(ptbr[free].modificado == 1){
+            
 			// Escribe el frame de la página en el archivo de respaldo y pon en 0 el bit de modificado
+            saveframe(ptbr[free].framenumber);
+            ptbr[free].modificado = 0;
+            //GUARDAR AUX------------------------------------------------
+            auxBuffer = systemframetable[ptbr[free].framenumber].paddress;
         }
+        
 		
         // Busca un frame virtual en memoria secundaria
+        int frameVirtual = searchvirtualframe();
 		// Si no hay frames virtuales en memoria secundaria regresa error
+        if(frameVirtual == -1)
 		{
             return(-1);
         }
         // Copia el frame a memoria secundaria, actualiza la tabla de páginas y libera el marco de la memoria principal
+        copyframe(frameVirtual,ptbr[free].framenumber);
+        loadframe(ptbr[free].framenumber);
+        systemframetable[ptbr[free].framenumber].assigned = 0;
+        ptbr[free].framenumber = frameVirtual;
     }
 
     // Busca un marco físico libre en el sistema
+    int mainFrame = getfreeframe();
 	// Si no hay marcos físicos libres en el sistema regresa error
+    if(mainFrame == -1)
     {
         return(-1); // Regresar indicando error de memoria insuficiente
     }
 
     // Si la página estaba en memoria secundaria
+    if(ptbr[pag_del_proceso].presente == 0)
     {
         // Cópialo al frame libre encontrado en memoria principal y transfiérelo a la memoria física
+        copyframe(ptbr[pag_del_proceso].framenumber,mainFrame);
+        loadframe(mainFrame);
+        ptbr[pag_del_proceso].framenumber = mainFrame;
+        
     }
    
 	// Poner el bit de presente en 1 en la tabla de páginas y el frame 
+    ptbr[pag_del_proceso].presente = 1;
+    systemframetable[mainFrame].assigned = 1;
 
 
     return(1); // Regresar todo bien
+}
+
+
+int getPageToFree(){
+    int i;
+    int menor = ptbr[0].tlastaccess;
+    int id=0;
+    int assigned=0;// bandera para la primera asignación
+    for(i=0;i<ptlr;i++){
+        if(ptbr[i].presente){
+            menor = ptbr[i].tlastaccess;
+            assigned=1;
+            id = i;
+        }
+        
+        if(menor>ptbr[i].tlastaccess && ptbr[i].presente == 1 && assigned == 1){
+            menor = ptbr[i].tlastaccess;
+            id = i;
+        }
+    }
+    return id;
+}
+int searchvirtualframe(){
+    int i;
+    char auxBuffer[PAGESIZE];
+    for(i=12;i<systemframetablesize+12;i++){
+           readblock(auxBuffer,i);
+        if(strcmp(auxBuffer,"FFFFFFFF")==0){
+            return i;
+        }
+        
+    }
+    return -1;
+}
+int getfreeframe()
+{
+    int i;
+    // Busca un marco libre en el sistema
+    for(i=framesbegin;i<systemframetablesize+framesbegin;i++)
+        if(!systemframetable[i].assigned)
+        {
+            systemframetable[i].assigned=1;
+            break;
+        }
+    if(i<systemframetablesize+framesbegin)
+        systemframetable[i].assigned=1;
+    else
+        i=-1;
+    return(i);
 }
 
