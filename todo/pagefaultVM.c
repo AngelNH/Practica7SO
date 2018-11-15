@@ -30,6 +30,7 @@ int getfifo();
 
 //funciones mias
 int getPageToFree();
+void logSecundaria(int frame);
 
 int pagefault(char *vaddress)
 {
@@ -69,22 +70,29 @@ int pagefault(char *vaddress)
     {
 		// Buscar una página a expulsar
 		int free = getPageToFree();
+        printf("PAGINA LIBRE ----------------- %d\n",free);
 		// Poner el bitde presente en 0 en la tabla de páginas
         ptbr[free].presente = 0;
+        printf("PRESENTE DE PAGINA %d ----------------- %d\n",free,ptbr[free].presente);
         // Si la página ya fue modificada, grábala en disco
-        
         if(ptbr[free].modificado == 1){
+            printf("PAGINA MODIFICADA -----------------\n");
             
 			// Escribe el frame de la página en el archivo de respaldo y pon en 0 el bit de modificado
             saveframe(ptbr[free].framenumber);
+            logSecundaria(ptbr[free].framenumber);
+            printf("FRAME A GUARDAR ----------------- %x -- %d\n",ptbr[free].framenumber,ptbr[free].modificado);
             ptbr[free].modificado = 0;
             //GUARDAR AUX------------------------------------------------
-            auxBuffer = systemframetable[ptbr[free].framenumber].paddress;
+            strcpy(auxBuffer,systemframetable[ptbr[free].framenumber].paddress);
+            printf("AUX BUFFER----------------- %p \n",systemframetable[ptbr[free].framenumber].paddress);
+            //auxBuffer = systemframetable[ptbr[free].framenumber].paddress;
         }
         
 		
         // Busca un frame virtual en memoria secundaria
         int frameVirtual = searchvirtualframe();
+        printf("FRAME LIBRE ----------------- %d\n",frameVirtual);//vamos bien
 		// Si no hay frames virtuales en memoria secundaria regresa error
         if(frameVirtual == -1)
 		{
@@ -92,6 +100,7 @@ int pagefault(char *vaddress)
         }
         // Copia el frame a memoria secundaria, actualiza la tabla de páginas y libera el marco de la memoria principal
         copyframe(frameVirtual,ptbr[free].framenumber);
+        writeblock(auxBuffer,frameVirtual);//pendiente
         loadframe(ptbr[free].framenumber);
         systemframetable[ptbr[free].framenumber].assigned = 0;
         ptbr[free].framenumber = frameVirtual;
@@ -99,6 +108,7 @@ int pagefault(char *vaddress)
 
     // Busca un marco físico libre en el sistema
     int mainFrame = getfreeframe();
+    printf("MAIN FRAME ----------------- %s \n",systemframetable[mainFrame].paddress);
 	// Si no hay marcos físicos libres en el sistema regresa error
     if(mainFrame == -1)
     {
@@ -110,6 +120,7 @@ int pagefault(char *vaddress)
     {
         // Cópialo al frame libre encontrado en memoria principal y transfiérelo a la memoria física
         copyframe(ptbr[pag_del_proceso].framenumber,mainFrame);
+        writeblock(buffer,mainFrame);//quien sabe
         loadframe(mainFrame);
         ptbr[pag_del_proceso].framenumber = mainFrame;
         
@@ -148,7 +159,9 @@ int searchvirtualframe(){
     char auxBuffer[PAGESIZE];
     for(i=12;i<systemframetablesize+12;i++){
            readblock(auxBuffer,i);
-        if(strcmp(auxBuffer,"FFFFFFFF")==0){
+         printf("MEMORIA VIRTUAL FRAME %d----------------- %p \n",i,auxBuffer);
+        if(strcmp(auxBuffer,"")==0){
+            
             return i;
         }
         
@@ -170,5 +183,10 @@ int getfreeframe()
     else
         i=-1;
     return(i);
+}
+void logSecundaria(int frame){
+    char auxBuffer[PAGESIZE];
+     readblock(auxBuffer,frame);
+    printf("LOG -- MEMORIA VIRTUAL FRAME %d----------------- %p ------------------ \n",frame,auxBuffer);
 }
 

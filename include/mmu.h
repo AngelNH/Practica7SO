@@ -23,3 +23,9 @@ struct PROCESSPAGETABLE {
 
 int pagefault(char *vaddress);
 int countframesassigned();
+
+int copyframe(int sframe,int dframe);
+int writeblock(char *buffer, int dblock);
+int readblock(char *buffer, int sblock);
+int loadframe(int frame);
+int saveframe(int frame);
