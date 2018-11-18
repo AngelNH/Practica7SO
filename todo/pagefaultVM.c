@@ -162,7 +162,7 @@ int getPageToFree(){
 int searchvirtualframe(){
     int i;
     char auxBuffer[PAGESIZE];
-    for(i=framesbegin;i<systemframetablesize+framesbegin;i++){
+    for(i=framesbegin*2;i<systemframetablesize+framesbegin;i++){
            readblock(auxBuffer,i);
          printf("MEMORIA VIRTUAL FRAME %d----------------- %p \n",i,auxBuffer);
         if(strcmp(auxBuffer,"")==0){
