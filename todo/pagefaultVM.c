@@ -44,7 +44,7 @@ int pagefault(char *vaddress)
     char emptyBuffer[PAGESIZE];
     char auxBuffer[PAGESIZE];
     
-    strcpy(emptyBuffer,"FFFFFFFF");
+    strcpy(emptyBuffer,"");
 
     // A partir de la dirección que provocó el fallo, calculamos la página
     pag_del_proceso=(long) vaddress>>12;
@@ -52,7 +52,8 @@ int pagefault(char *vaddress)
 
     // Si la página del proceso está en un marco virtual del disco
     
-    if(ptbr[pag_del_proceso].framenumber>12){
+    if(ptbr[pag_del_proceso].presente == 0 && 
+        ptbr[pag_del_proceso].framenumber != -1){
 
 		// Lee el marco virtual al buffer
         readblock(buffer,ptbr[pag_del_proceso].framenumber); //checar como enviar buffer.
@@ -116,20 +117,24 @@ int pagefault(char *vaddress)
     }
 
     // Si la página estaba en memoria secundaria
-    if(ptbr[pag_del_proceso].presente == 0)
+    if(ptbr[pag_del_proceso].presente == 0 && 
+        ptbr[pag_del_proceso].framenumber != -1)
     {
         // Cópialo al frame libre encontrado en memoria principal y transfiérelo a la memoria física
         copyframe(ptbr[pag_del_proceso].framenumber,mainFrame);
         writeblock(buffer,mainFrame);//quien sabe
         loadframe(mainFrame);
         ptbr[pag_del_proceso].framenumber = mainFrame;
-        
+        // Poner el bit de presente en 1 en la tabla de páginas y el frame 
+        ptbr[pag_del_proceso].presente = 1;
+        systemframetable[mainFrame].assigned = 1;
+            
+    } else {
+        ptbr[pag_del_proceso].framenumber = mainFrame;
+        // Poner el bit de presente en 1 en la tabla de páginas y el frame 
+        ptbr[pag_del_proceso].presente = 1;
+        systemframetable[mainFrame].assigned = 1;
     }
-   
-	// Poner el bit de presente en 1 en la tabla de páginas y el frame 
-    ptbr[pag_del_proceso].presente = 1;
-    systemframetable[mainFrame].assigned = 1;
-
 
     return(1); // Regresar todo bien
 }
@@ -157,7 +162,7 @@ int getPageToFree(){
 int searchvirtualframe(){
     int i;
     char auxBuffer[PAGESIZE];
-    for(i=12;i<systemframetablesize+12;i++){
+    for(i=framesbegin;i<systemframetablesize+framesbegin;i++){
            readblock(auxBuffer,i);
          printf("MEMORIA VIRTUAL FRAME %d----------------- %p \n",i,auxBuffer);
         if(strcmp(auxBuffer,"")==0){
